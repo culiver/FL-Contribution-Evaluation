@@ -7,6 +7,8 @@ import argparse
 
 def args_parser():
     parser = argparse.ArgumentParser()
+    # Aggregate Mode
+    parser.add_argument('--trainer', type=str, default='fedavg', help='trainer name')
 
     # federated arguments (Notation for the arguments followed from paper)
     parser.add_argument('--epochs', type=int, default=10,
