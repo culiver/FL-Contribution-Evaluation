@@ -43,6 +43,9 @@ def args_parser():
     parser.add_argument('--max_pool', type=str, default='True',
                         help="Whether use max pooling rather than \
                         strided convolutions")
+    
+    parser.add_argument('--pre_train', type=str, default='',
+                    help='pre-trained model directory')
 
     # other arguments
     parser.add_argument('--dataset', type=str, default='mnist', help="name \
@@ -81,6 +84,16 @@ def args_parser():
                         help='save output results')
     parser.add_argument('--save_gt', action='store_true',
                         help='save low-resolution and high-resolution images together')
+
+    # Hardware specifications
+    parser.add_argument('--n_threads', type=int, default=20,
+                        help='number of threads for data loading')
+    parser.add_argument('--cpu', action='store_true',
+                        help='use cpu only')
+    parser.add_argument('--n_GPUs', type=int, default=1,
+                        help='number of GPUs')
+    # parser.add_argument('--seed', type=int, default=1,
+                        # help='random seed')
 
     args = parser.parse_args()
     return args

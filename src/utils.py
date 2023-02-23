@@ -9,6 +9,7 @@ import datetime
 from torchvision import datasets, transforms
 from sampling import mnist_iid, mnist_noniid, mnist_noniid_unequal
 from sampling import cifar_iid, cifar_noniid
+import json
 
 
 def get_dataset(args):
@@ -107,7 +108,7 @@ class checkpoint():
     def __init__(self, args):
         self.args = args
         self.ok = True
-        self.log = torch.Tensor()
+        self.log = []
         now = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
 
         if not args.load:
@@ -117,7 +118,7 @@ class checkpoint():
         else:
             self.dir = os.path.join('..', 'experiment', args.load)
             if os.path.exists(self.dir):
-                self.log = torch.load(self.get_path('psnr_log.pt'))
+                self.log = json.load(self.get_path('fed_log.json'))['score']
                 print('Continue from epoch {}...'.format(len(self.log)))
             else:
                 args.load = ''
@@ -141,14 +142,13 @@ class checkpoint():
     def get_path(self, *subdir):
         return os.path.join(self.dir, *subdir)
 
-    def save(self, trainer, epoch, is_best=False):
-        trainer.model.save(self.get_path('model'), epoch, is_best=is_best)
-        trainer.loss.save(self.dir)
-        trainer.loss.plot_loss(self.dir, epoch)
+    def save(self, model, epoch, is_best=False):
+        model.save(self.get_path('model'), epoch, is_best=is_best)
+        with open(self.get_path('fed_log.json'), 'w', newline='') as jsonfile:
+            json.dump({'score':self.log}, jsonfile)
 
-        self.plot_psnr(epoch)
-        trainer.optimizer.save(self.dir)
-        torch.save(self.log, self.get_path('psnr_log.pt'))
+    def add_log(self, score):
+        self.log.append(score)
 
     def write_log(self, log, refresh=False):
         print(log)

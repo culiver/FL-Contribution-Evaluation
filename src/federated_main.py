@@ -15,21 +15,24 @@ from tensorboardX import SummaryWriter
 
 from options import args_parser
 from update import LocalUpdate, test_inference
-from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
+# from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
 from utils import get_dataset, average_weights, exp_details
 import utils
 
 from trainer import FedAvg
+import models
 
 def main():
     start_time = time.time()
     args = args_parser()
     exp_details(args)
 
+    torch.manual_seed(args.seed)
     checkpoint = utils.checkpoint(args)
 
     if args.trainer == 'fedavg':
-        t = FedAvg(args, checkpoint)
+        _model = models.Model(args, checkpoint)
+        t = FedAvg(args, _model, checkpoint)
         t.train()
 
 

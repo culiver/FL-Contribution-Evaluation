@@ -10,15 +10,16 @@ from tensorboardX import SummaryWriter
 
 from options import args_parser
 from update import LocalUpdate, test_inference
-from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
+# from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
 from utils import get_dataset, average_weights, exp_details
 
 import matplotlib
 import matplotlib.pyplot as plt
 
 class FedAvg():
-    def __init__(self, args, ckp):
+    def __init__(self, args, my_model, ckp):
         self.args = args
+        self.model = my_model
         self.ckp = ckp
         path_project = os.path.abspath('..')
         self.writer = SummaryWriter('../logs')
@@ -31,34 +32,19 @@ class FedAvg():
         # load dataset and user groups
         train_dataset, test_dataset, user_groups = get_dataset(self.args)
 
-        # BUILD MODEL
-        if self.args.model == 'cnn':
-            # Convolutional neural netork
-            if self.args.dataset == 'mnist':
-                global_model = CNNMnist(args=self.args)
-            elif self.args.dataset == 'fmnist':
-                global_model = CNNFashion_Mnist(args=self.args)
-            elif self.args.dataset == 'cifar':
-                global_model = CNNCifar(args=self.args)
-
-        elif self.args.model == 'mlp':
-            # Multi-layer preceptron
-            img_size = train_dataset[0][0].shape
-            len_in = 1
-            for x in img_size:
-                len_in *= x
-                global_model = MLP(dim_in=len_in, dim_hidden=64,
-                                dim_out=self.args.num_classes)
-        else:
-            exit('Error: unrecognized model')
-
         # Set the model to train and send it to device.
-        global_model.to(device)
-        global_model.train()
-        self.ckp.write_log(str(global_model))
+        self.model.to(device)
+        self.model.train()
+        self.model.load(
+            self.ckp.get_path('model'),
+            pre_train=self.args.pre_train,
+            resume=self.args.resume,
+            cpu=self.args.cpu
+        )
+        self.ckp.write_log(str(self.model))
 
         # copy weights
-        global_weights = global_model.state_dict()
+        global_weights = self.model.state_dict()
 
         # Training
         self.train_loss, self.train_accuracy = [], []
@@ -67,11 +53,13 @@ class FedAvg():
         print_every = 2
         val_loss_pre, counter = 0, 0
 
-        for epoch in tqdm(range(self.args.epochs)):
+        epoch_start = len(self.ckp.log)
+
+        for epoch in tqdm(range(epoch_start, self.args.epochs)):
             local_weights, local_losses = [], []
             self.ckp.write_log(f'\n | Global Training Round : {epoch+1} |\n')
 
-            global_model.train()
+            self.model.train()
             m = max(int(self.args.frac * self.args.num_users), 1)
             idxs_users = np.random.choice(range(self.args.num_users), m, replace=False)
 
@@ -79,7 +67,7 @@ class FedAvg():
                 local_model = LocalUpdate(args=self.args, dataset=train_dataset,
                                         idxs=user_groups[idx], logger=self.writer)
                 w, loss = local_model.update_weights(
-                    model=copy.deepcopy(global_model), global_round=epoch)
+                    model=copy.deepcopy(self.model), global_round=epoch)
                 local_weights.append(copy.deepcopy(w))
                 local_losses.append(copy.deepcopy(loss))
 
@@ -87,18 +75,18 @@ class FedAvg():
             global_weights = average_weights(local_weights)
 
             # update global weights
-            global_model.load_state_dict(global_weights)
+            self.model.load_state_dict(global_weights)
 
             loss_avg = sum(local_losses) / len(local_losses)
             self.train_loss.append(loss_avg)
 
             # Calculate avg training accuracy over all users at every epoch
             list_acc, list_loss = [], []
-            global_model.eval()
+            self.model.eval()
             for c in range(self.args.num_users):
                 local_model = LocalUpdate(args=self.args, dataset=train_dataset,
                                         idxs=user_groups[idx], logger=self.writer)
-                acc, loss = local_model.inference(model=global_model)
+                acc, loss = local_model.inference(model=self.model)
                 list_acc.append(acc)
                 list_loss.append(loss)
             self.train_accuracy.append(sum(list_acc)/len(list_acc))
@@ -109,8 +97,11 @@ class FedAvg():
                 self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.train_loss))}')
                 self.ckp.write_log('Train Accuracy: {:.2f}% \n'.format(100*self.train_accuracy[-1]))
 
+            self.ckp.add_log(self.train_accuracy[-1])
+            self.ckp.save(self.model, epoch, is_best=(self.ckp.log.index(max(self.ckp.log)) == epoch))
+
         # Test inference after completion of training
-        test_acc, test_loss = test_inference(self.args, global_model, test_dataset)
+        test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
 
         self.ckp.write_log(f' \n Results after {self.args.epochs} global rounds of training:')
         self.ckp.write_log("|---- Avg Train Accuracy: {:.2f}%".format(100*self.train_accuracy[-1]))
