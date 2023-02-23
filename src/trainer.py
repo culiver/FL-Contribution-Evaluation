@@ -13,10 +13,13 @@ from update import LocalUpdate, test_inference
 from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
 from utils import get_dataset, average_weights, exp_details
 
+import matplotlib
+import matplotlib.pyplot as plt
 
 class FedAvg():
-    def __init__(self, args):
+    def __init__(self, args, ckp):
         self.args = args
+        self.ckp = ckp
         path_project = os.path.abspath('..')
         self.writer = SummaryWriter('../logs')
 
@@ -52,13 +55,13 @@ class FedAvg():
         # Set the model to train and send it to device.
         global_model.to(device)
         global_model.train()
-        print(global_model)
+        self.ckp.write_log(str(global_model))
 
         # copy weights
         global_weights = global_model.state_dict()
 
         # Training
-        train_loss, train_accuracy = [], []
+        self.train_loss, self.train_accuracy = [], []
         val_acc_list, net_list = [], []
         cv_loss, cv_acc = [], []
         print_every = 2
@@ -66,7 +69,7 @@ class FedAvg():
 
         for epoch in tqdm(range(self.args.epochs)):
             local_weights, local_losses = [], []
-            print(f'\n | Global Training Round : {epoch+1} |\n')
+            self.ckp.write_log(f'\n | Global Training Round : {epoch+1} |\n')
 
             global_model.train()
             m = max(int(self.args.frac * self.args.num_users), 1)
@@ -87,7 +90,7 @@ class FedAvg():
             global_model.load_state_dict(global_weights)
 
             loss_avg = sum(local_losses) / len(local_losses)
-            train_loss.append(loss_avg)
+            self.train_loss.append(loss_avg)
 
             # Calculate avg training accuracy over all users at every epoch
             list_acc, list_loss = [], []
@@ -98,20 +101,20 @@ class FedAvg():
                 acc, loss = local_model.inference(model=global_model)
                 list_acc.append(acc)
                 list_loss.append(loss)
-            train_accuracy.append(sum(list_acc)/len(list_acc))
+            self.train_accuracy.append(sum(list_acc)/len(list_acc))
 
             # print global training loss after every 'i' rounds
             if (epoch+1) % print_every == 0:
-                print(f' \nAvg Training Stats after {epoch+1} global rounds:')
-                print(f'Training Loss : {np.mean(np.array(train_loss))}')
-                print('Train Accuracy: {:.2f}% \n'.format(100*train_accuracy[-1]))
+                self.ckp.write_log(f' \nAvg Training Stats after {epoch+1} global rounds:')
+                self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.train_loss))}')
+                self.ckp.write_log('Train Accuracy: {:.2f}% \n'.format(100*self.train_accuracy[-1]))
 
         # Test inference after completion of training
         test_acc, test_loss = test_inference(self.args, global_model, test_dataset)
 
-        print(f' \n Results after {self.args.epochs} global rounds of training:')
-        print("|---- Avg Train Accuracy: {:.2f}%".format(100*train_accuracy[-1]))
-        print("|---- Test Accuracy: {:.2f}%".format(100*test_acc))
+        self.ckp.write_log(f' \n Results after {self.args.epochs} global rounds of training:')
+        self.ckp.write_log("|---- Avg Train Accuracy: {:.2f}%".format(100*self.train_accuracy[-1]))
+        self.ckp.write_log("|---- Test Accuracy: {:.2f}%".format(100*test_acc))
 
         # Saving the objects train_loss and train_accuracy:
         file_name = '../save/objects/{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}].pkl'.\
@@ -119,10 +122,34 @@ class FedAvg():
                 self.args.local_ep, self.args.local_bs)
 
         with open(file_name, 'wb') as f:
-            pickle.dump([train_loss, train_accuracy], f)
+            pickle.dump([self.train_loss, self.train_accuracy], f)
 
     def test(self):
         pass
+
+    def plot(self):
+        # PLOTTING (optional)
+        matplotlib.use('Agg')
+
+        # Plot Loss curve
+        plt.figure()
+        plt.title('Training Loss vs Communication rounds')
+        plt.plot(range(len(self.train_loss)), self.train_loss, color='r')
+        plt.ylabel('Training loss')
+        plt.xlabel('Communication Rounds')
+        plt.savefig('../save/fed_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_loss.png'.
+                    format(self.args.dataset, self.args.model, self.args.epochs, self.args.frac,
+                           self.args.iid, self.args.local_ep, self.args.local_bs))
+        
+        # Plot Average Accuracy vs Communication rounds
+        plt.figure()
+        plt.title('Average Accuracy vs Communication rounds')
+        plt.plot(range(len(self.train_accuracy)), self.train_accuracy, color='k')
+        plt.ylabel('Average Accuracy')
+        plt.xlabel('Communication Rounds')
+        plt.savefig('../save/fed_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_acc.png'.
+                    format(self.args.dataset, self.args.model, self.args.epochs, self.args.frac,
+                           self.args.iid, self.args.local_ep, self.args.local_bs))
 
     # def terminate(self):
     #     if self.args.test_only:

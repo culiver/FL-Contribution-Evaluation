@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # Python version: 3.6
-
+import os
 import copy
 import torch
+import time
+import datetime
 from torchvision import datasets, transforms
 from sampling import mnist_iid, mnist_noniid, mnist_noniid_unequal
 from sampling import cifar_iid, cifar_noniid
@@ -100,3 +102,60 @@ def exp_details(args):
     print(f'    Local Batch size   : {args.local_bs}')
     print(f'    Local Epochs       : {args.local_ep}\n')
     return
+
+class checkpoint():
+    def __init__(self, args):
+        self.args = args
+        self.ok = True
+        self.log = torch.Tensor()
+        now = datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+
+        if not args.load:
+            if not args.save:
+                args.save = now
+            self.dir = os.path.join('..', 'experiment', args.save)
+        else:
+            self.dir = os.path.join('..', 'experiment', args.load)
+            if os.path.exists(self.dir):
+                self.log = torch.load(self.get_path('psnr_log.pt'))
+                print('Continue from epoch {}...'.format(len(self.log)))
+            else:
+                args.load = ''
+
+        if args.reset:
+            os.system('rm -rf ' + self.dir)
+            args.load = ''
+
+        os.makedirs(self.dir, exist_ok=True)
+        os.makedirs(self.get_path('model'), exist_ok=True)
+        os.makedirs(self.get_path('results-{}'.format(args.dataset)), exist_ok=True)
+
+        open_type = 'a' if os.path.exists(self.get_path('log.txt'))else 'w'
+        self.log_file = open(self.get_path('log.txt'), open_type)
+        with open(self.get_path('config.txt'), open_type) as f:
+            f.write(now + '\n\n')
+            for arg in vars(args):
+                f.write('{}: {}\n'.format(arg, getattr(args, arg)))
+            f.write('\n')
+
+    def get_path(self, *subdir):
+        return os.path.join(self.dir, *subdir)
+
+    def save(self, trainer, epoch, is_best=False):
+        trainer.model.save(self.get_path('model'), epoch, is_best=is_best)
+        trainer.loss.save(self.dir)
+        trainer.loss.plot_loss(self.dir, epoch)
+
+        self.plot_psnr(epoch)
+        trainer.optimizer.save(self.dir)
+        torch.save(self.log, self.get_path('psnr_log.pt'))
+
+    def write_log(self, log, refresh=False):
+        print(log)
+        self.log_file.write(log + '\n')
+        if refresh:
+            self.log_file.close()
+            self.log_file = open(self.get_path('log.txt'), 'a')
+
+    def done(self):
+        self.log_file.close()
