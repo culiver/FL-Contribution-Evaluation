@@ -91,13 +91,16 @@ class FedAvg():
                 list_loss.append(loss)
             self.train_accuracy.append(sum(list_acc)/len(list_acc))
 
+            test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
+
             # print global training loss after every 'i' rounds
             if (epoch+1) % print_every == 0:
                 self.ckp.write_log(f' \nAvg Training Stats after {epoch+1} global rounds:')
                 self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.train_loss))}')
-                self.ckp.write_log('Train Accuracy: {:.2f}% \n'.format(100*self.train_accuracy[-1]))
+                self.ckp.write_log('Train Accuracy: {:.2f}%'.format(100*self.train_accuracy[-1]))
+                self.ckp.write_log("|---- Test Accuracy: {:.2f} \n%".format(100*test_acc))
 
-            self.ckp.add_log(self.train_accuracy[-1])
+            self.ckp.add_log(test_acc)
             self.ckp.save(self.model, epoch, is_best=(self.ckp.log.index(max(self.ckp.log)) == epoch))
 
         # Test inference after completion of training

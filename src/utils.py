@@ -124,7 +124,10 @@ class checkpoint():
                 args.load = ''
 
         if args.reset:
-            os.system('rm -rf ' + self.dir)
+            # os.system('rm -rf ' + self.dir)
+            os.system('rm ' + os.path.join(self.dir, 'log.txt'))
+            os.system('rm ' + os.path.join(self.dir, 'config.txt'))
+            os.system('rm ' + os.path.join(self.dir, 'fed_log.json'))
             args.load = ''
 
         os.makedirs(self.dir, exist_ok=True)
