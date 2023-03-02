@@ -18,7 +18,8 @@ from torch.utils.data import DataLoader, Dataset
 import matplotlib
 import matplotlib.pyplot as plt
 
-from kd import hcl
+from kd import hcl, Bridge
+from ckt import CKTModule
 
 class KA():
     def __init__(self, args, my_model, ckp):
@@ -34,23 +35,32 @@ class KA():
         self.ka_loss = []
         print_every = 1
         self.criterion_CE = nn.NLLLoss().to(self.device)
+        self.criterion_L1 = nn.L1Loss().to(self.device)
         
         # Build Bridges
-
+        # bridges = [Bridge([6, 16]).to(self.device).train() for i in range(len(local_weights))]
+        ckt_modules = nn.ModuleList([])
+        for c in [6, 16]:
+            ckt_modules.append(CKTModule(channel_t=c, channel_s=c, channel_h=c//2, n_teachers=len(local_weights)).to(self.device))
         # Dataset
         testloader = DataLoader(test_dataset, batch_size=self.args.ka_bs, shuffle=False)
 
         # Set optimizer for the local updates
         if self.args.optimizer == 'sgd':
-            optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.lr,
+            optimizer = torch.optim.SGD(list(self.model.parameters())+list(ckt_modules.parameters()), lr=self.args.lr,
                                         momentum=0.5)
             optimizer_fc = torch.optim.SGD(self.model.parameters(), lr=self.args.lr,
                                         momentum=0.5)
         elif self.args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.lr,
+            optimizer = torch.optim.Adam(list(self.model.parameters())+list(ckt_modules.parameters()), lr=self.args.lr,
                                          weight_decay=1e-4)
             optimizer_fc = torch.optim.Adam(self.model.parameters(), lr=self.args.lr,
                                          weight_decay=1e-4)
+
+        teacher_list = []
+        for w in local_weights:
+            teacher_list.append(copy.deepcopy(self.model).eval())
+            teacher_list[-1].load_state_dict(w)
 
         for iter in range(self.args.ka_ep):
             batch_loss = []
@@ -62,76 +72,59 @@ class KA():
                 losses = {}
                 images, labels = images.to(self.device), labels.to(self.device)
 
-                teacher_list = []
-                for w in local_weights:
-                    teacher_list.append(copy.deepcopy(self.model))
-                    teacher_list[-1].load_state_dict(w)
-                
-                s_features, pred = self.model(images, is_feat = True, preact=True)
+                features_from_student, pred = self.model(images, is_feat = True, preact=True)
 
                 t_features_list = []
+                s_features_list = []
                 t_pred_list = []
-                for teacher in teacher_list:
-                    t_features, t_pred = teacher(images, is_feat=True, preact=True)
-                    t_features_list.append(t_features)
-                    t_pred_list.append(t_pred)
-                
+                for idx, teacher in enumerate(teacher_list):
+                    with torch.no_grad():
+                        t_features, t_pred = teacher(images, is_feat=True, preact=True)
+                        t_features_list.append(t_features)
+                        t_pred_list.append(t_pred)
+
                 # Calculate the score of teachers and find best
                 all_logits = torch.stack(t_pred_list)
                 best_model_idx = torch.argmax(all_logits[:, torch.arange(pred.shape[0]), labels], dim=0)
 
-                # Group teachers layer by layer and select the best based on index
-                best_t_features = []
-                for l in range(len(t_features_list[0])):
-                    t_feature = []
-                    for t in range(len(t_features_list)):
-                        t_feature.append(t_features_list[t][l])
-                    t_feature = torch.stack(t_feature, dim=1)
-                    t_feature = t_feature[torch.arange(pred.shape[0]), best_model_idx]
-                    best_t_features.append(t_feature)
+                golden_pred = torch.stack(t_pred_list, dim=1)[torch.arange(pred.shape[0]), best_model_idx]
+                features_from_teachers = []
+                for layer in range(len(t_features_list[0])):
+                    features_from_teachers.append([t_features_list[i][layer] for i in range(len(local_weights))])
 
-                feature_kd_loss = hcl(s_features, best_t_features)
-                losses['review_kd_loss'] = feature_kd_loss * self.args.kd_loss_weight
+                PFE_loss, PFV_loss = 0., 0.
+                for i, (s_features, t_features) in enumerate(zip(features_from_student, features_from_teachers)):
+                    t_proj_features, t_recons_features, s_proj_features = ckt_modules[i](t_features, s_features)
+                    PFE_loss += self.criterion_L1(s_proj_features, torch.stack(t_proj_features))
+                    PFV_loss += 0.05 * self.criterion_L1(torch.stack(t_recons_features), torch.stack(t_features))
+
+                T_loss = self.criterion_L1(pred, golden_pred)
+                loss = T_loss + PFE_loss + PFV_loss
 
                 self.model.zero_grad()
-                loss = sum(losses.values())
+                # loss = sum(losses.values())
                 self.ka_loss.append(loss.item())
 
                 loss.backward()
                 optimizer.step()
 
                 if self.args.verbose and (batch_idx % 10 == 0):
-                    print('| KA Epoch : {} | [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    print('| KA Epoch : {} | [{}/{} ({:.0f}%)]\tLoss_T: {:.6f} Loss_PFE: {:.6f} Loss_PFV: {:.6f}'.format(
                         iter, batch_idx * len(images),
                         len(testloader.dataset),
-                        100. * batch_idx / len(testloader), loss.item()))
+                        100. * batch_idx / len(testloader), T_loss.item(), PFE_loss.item(), PFV_loss.item()))
             
-            # Finetuning fc layer to check result
-            for name, param in self.model.named_parameters():
-                if 'fc' in name:
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
 
-            for batch_idx, (images, labels) in enumerate(testloader):
-                losses = {}
-                images, labels = images.to(self.device), labels.to(self.device)
-                self.model.zero_grad()
-                log_probs = self.model(images)
-                loss = self.criterion_CE(log_probs, labels)
-                loss.backward()
-                optimizer_fc.step()
+        test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
+        
+        # print global training loss after every 'i' rounds
+        if (iter+1) % print_every == 0:
+            self.ckp.write_log(f' \nAvg Training Stats after {iter+1} KA rounds:')
+            self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.ka_loss))}')
+            self.ckp.write_log("|---- Test Accuracy: {:.2f}%\n".format(100*test_acc))
 
-            test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
-            
-            # print global training loss after every 'i' rounds
-            if (iter+1) % print_every == 0:
-                self.ckp.write_log(f' \nAvg Training Stats after {iter+1} KA rounds:')
-                self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.ka_loss))}')
-                self.ckp.write_log("|---- Test Accuracy: {:.2f}%\n".format(100*test_acc))
-
-            self.ckp.add_log(test_acc)
-            self.ckp.save(self.model, iter, is_best=(self.ckp.log.index(max(self.ckp.log)) == iter))
+        self.ckp.add_log(test_acc)
+        self.ckp.save(self.model, iter, is_best=(self.ckp.log.index(max(self.ckp.log)) == iter))
 
     def train(self):
         if self.args.gpu_id:

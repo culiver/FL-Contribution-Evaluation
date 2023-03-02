@@ -46,8 +46,8 @@ class CNNMnist(nn.Module):
 
         if is_feat:
             if preact:
-                return [f1_pre, f2_pre], x
+                return [f1_pre, f2_pre], F.log_softmax(x, dim=1)
             else:
-                return [f1, f2], x
+                return [f1, f2], F.log_softmax(x, dim=1)
         else:
             return F.log_softmax(x, dim=1)

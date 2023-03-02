@@ -7,7 +7,28 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 
+class Bridge(nn.Module):
+    def __init__(self, channels=[]):
+        super(Bridge, self).__init__()
 
+        t_models = []
+        s_models = []
+
+        for c in channels:
+            t_models.append(nn.Conv2d(c, c, 1))
+            s_models.append(nn.Conv2d(c, c, 1))
+
+        self.t_models = nn.ModuleList(t_models)
+        self.s_models = nn.ModuleList(s_models)
+
+    def forward(self, feat, type='s'):
+        
+        models = self.s_models if type == 's' else self.t_models
+        output = []
+        for i in range(len(feat)):
+            output.append(models[i](feat[i]))
+        
+        return output
 
 def hcl(fstudent, fteacher):
     loss_all = 0.0
