@@ -20,6 +20,7 @@ from utils import get_dataset, average_weights, exp_details
 import utils
 
 from trainer.FedAvg import FedAvg
+from trainer.KA import KA
 import models
 
 def main():
@@ -34,7 +35,10 @@ def main():
         _model = models.Model(args, checkpoint)
         t = FedAvg(args, _model, checkpoint)
         t.train()
-
+    if args.trainer == 'ka':
+        _model = models.Model(args, checkpoint)
+        t = KA(args, _model, checkpoint)
+        t.train()
 
     print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))
 

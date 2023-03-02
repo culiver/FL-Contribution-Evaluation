@@ -4,6 +4,25 @@ import torch.nn.functional as F
 def make_model(args):
     return CNNCifar(args)
 
+# class CNNCifar(nn.Module):
+#     def __init__(self, args):
+#         super(CNNCifar, self).__init__()
+#         self.conv1 = nn.Conv2d(3, 6, 5)
+#         self.pool = nn.MaxPool2d(2, 2)
+#         self.conv2 = nn.Conv2d(6, 16, 5)
+#         self.fc1 = nn.Linear(16 * 5 * 5, 120)
+#         self.fc2 = nn.Linear(120, 84)
+#         self.fc3 = nn.Linear(84, args.num_classes)
+
+#     def forward(self, x):
+#         x = self.pool(F.relu(self.conv1(x)))
+#         x = self.pool(F.relu(self.conv2(x)))
+#         x = x.view(-1, 16 * 5 * 5)
+#         x = F.relu(self.fc1(x))
+#         x = F.relu(self.fc2(x))
+#         x = self.fc3(x)
+#         return F.log_softmax(x, dim=1)
+
 class CNNCifar(nn.Module):
     def __init__(self, args):
         super(CNNCifar, self).__init__()
@@ -14,11 +33,21 @@ class CNNCifar(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, args.num_classes)
 
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
+    def forward(self, x, is_feat=False, preact=False):
+        f1_pre = self.conv1(x)
+        f1 = self.pool(F.relu(f1_pre))
+        f2_pre = self.conv2(f1)
+        f2 = self.pool(F.relu(f2_pre))
+        x = f2
         x = x.view(-1, 16 * 5 * 5)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        return F.log_softmax(x, dim=1)
+
+        if is_feat:
+            if preact:
+                return [f1_pre, f2_pre], x
+            else:
+                return [f1, f2], x
+        else:
+            return F.log_softmax(x, dim=1)

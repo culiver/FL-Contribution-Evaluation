@@ -85,6 +85,15 @@ def args_parser():
     parser.add_argument('--save_gt', action='store_true',
                         help='save low-resolution and high-resolution images together')
 
+    # Knowledge amalgamation
+    parser.add_argument('--ka_bs', type=int, default=10,
+                        help="number of rounds of training")
+    parser.add_argument('--ka_ep', type=int, default=10,
+                        help="number of users: K")
+    parser.add_argument('--kd_loss_weight', type=float, default=1,
+                        help="review kd loss weight")
+                        
+
     # Hardware specifications
     parser.add_argument('--n_threads', type=int, default=20,
                         help='number of threads for data loading')

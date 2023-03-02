@@ -28,14 +28,14 @@ class Model(nn.Module):
         self.model = module.make_model(args).to(self.device)
 
 
-    def forward(self, x):
+    def forward(self, x, is_feat=False, preact=False):
         if self.training:
             if self.n_GPUs > 1:
                 return P.data_parallel(self.model, x, range(self.n_GPUs))
             else:
-                return self.model(x)
+                return self.model(x, is_feat, preact)
         else:
-            return self.model(x)
+            return self.model(x, is_feat, preact)
 
     def save(self, apath, epoch, is_best=False):
         save_dirs = [os.path.join(apath, 'model_latest.pt')]
