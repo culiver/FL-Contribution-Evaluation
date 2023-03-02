@@ -145,11 +145,3 @@ class FedAvg():
                     format(self.args.dataset, self.args.model, self.args.epochs, self.args.frac,
                            self.args.iid, self.args.local_ep, self.args.local_bs))
 
-    # def terminate(self):
-    #     if self.args.test_only:
-    #         self.test()
-    #         return True
-    #     else:
-    #         epoch = self.optimizer.get_last_epoch() + 1
-    #         return epoch >= self.args.epochs
-

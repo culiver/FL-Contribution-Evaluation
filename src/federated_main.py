@@ -19,7 +19,7 @@ from update import LocalUpdate, test_inference
 from utils import get_dataset, average_weights, exp_details
 import utils
 
-from trainer import FedAvg
+from trainer.FedAvg import FedAvg
 import models
 
 def main():

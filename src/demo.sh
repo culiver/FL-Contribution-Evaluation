@@ -1,0 +1,1 @@
+python federated_main.py --model=cnn --dataset=mnist --gpu=0 --iid=1 --epochs=10
