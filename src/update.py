@@ -5,7 +5,7 @@
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-
+import numpy as np
 
 class DatasetSplit(Dataset):
     """An abstract Dataset class wrapped around Pytorch Dataset class.
@@ -29,6 +29,7 @@ class LocalUpdate(object):
         self.logger = logger
         self.trainloader, self.validloader, self.testloader = self.train_val_test(
             dataset, list(idxs))
+        print('Client labels:' + str(np.unique(np.array([d[1] for d in self.trainloader.dataset]))))
         self.device = 'cuda' if args.gpu else 'cpu'
         # Default criterion set to NLL loss function
         self.criterion = nn.NLLLoss().to(self.device)

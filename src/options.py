@@ -23,6 +23,8 @@ def args_parser():
                         help="local batch size: B")
     parser.add_argument('--lr', type=float, default=0.01,
                         help='learning rate')
+    parser.add_argument('--lr_ka', type=float, default=2e-4,
+                        help='learning rate of ka')
     parser.add_argument('--momentum', type=float, default=0.5,
                         help='SGD momentum (default: 0.5)')
 
@@ -56,6 +58,8 @@ def args_parser():
                         to a specific GPU ID. Default set to use CPU.")
     parser.add_argument('--gpu', type=bool, default=True, help="To use cuda")
     parser.add_argument('--optimizer', type=str, default='sgd', help="type \
+                        of optimizer")
+    parser.add_argument('--optimizer_ka', type=str, default='adam', help="type \
                         of optimizer")
     parser.add_argument('--iid', type=int, default=1,
                         help='Default set to IID. Set to 0 for non-IID.')

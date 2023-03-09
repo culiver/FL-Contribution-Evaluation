@@ -36,25 +36,24 @@ class KA():
         print_every = 1
         self.criterion_CE = nn.NLLLoss().to(self.device)
         self.criterion_L1 = nn.L1Loss().to(self.device)
+        self.criterion_L1_none = nn.L1Loss(reduction='none').to(self.device)
+        self.softmax = torch.nn.Softmax(dim=0)
         
         # Build Bridges
         # bridges = [Bridge([6, 16]).to(self.device).train() for i in range(len(local_weights))]
         ckt_modules = nn.ModuleList([])
-        for c in [6, 16]:
+        for c in [10, 20]: # mnist
+        # for c in [6, 16]: # cifar
             ckt_modules.append(CKTModule(channel_t=c, channel_s=c, channel_h=c//2, n_teachers=len(local_weights)).to(self.device))
         # Dataset
         testloader = DataLoader(test_dataset, batch_size=self.args.ka_bs, shuffle=False)
 
         # Set optimizer for the local updates
-        if self.args.optimizer == 'sgd':
-            optimizer = torch.optim.SGD(list(self.model.parameters())+list(ckt_modules.parameters()), lr=self.args.lr,
+        if self.args.optimizer_ka == 'sgd':
+            optimizer = torch.optim.SGD(list(self.model.parameters())+list(ckt_modules.parameters()), lr=self.args.lr_ka,
                                         momentum=0.5)
-            optimizer_fc = torch.optim.SGD(self.model.parameters(), lr=self.args.lr,
-                                        momentum=0.5)
-        elif self.args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(list(self.model.parameters())+list(ckt_modules.parameters()), lr=self.args.lr,
-                                         weight_decay=1e-4)
-            optimizer_fc = torch.optim.Adam(self.model.parameters(), lr=self.args.lr,
+        elif self.args.optimizer_ka == 'adam':
+            optimizer = torch.optim.Adam(list(self.model.parameters())+list(ckt_modules.parameters()), lr=self.args.lr_ka,
                                          weight_decay=1e-4)
 
         teacher_list = []
@@ -62,6 +61,7 @@ class KA():
             teacher_list.append(copy.deepcopy(self.model).eval())
             teacher_list[-1].load_state_dict(w)
 
+        self.model.eval()
         for iter in range(self.args.ka_ep):
             batch_loss = []
             # Make sure all param can be updated
@@ -84,8 +84,9 @@ class KA():
                         t_pred_list.append(t_pred)
 
                 # Calculate the score of teachers and find best
-                all_logits = torch.stack(t_pred_list)
+                all_logits = torch.stack(t_pred_list) # (t, b, c)
                 best_model_idx = torch.argmax(all_logits[:, torch.arange(pred.shape[0]), labels], dim=0)
+                weight_t = self.softmax(all_logits[:, torch.arange(pred.shape[0]), labels]).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
 
                 golden_pred = torch.stack(t_pred_list, dim=1)[torch.arange(pred.shape[0]), best_model_idx]
                 features_from_teachers = []
@@ -95,14 +96,15 @@ class KA():
                 PFE_loss, PFV_loss = 0., 0.
                 for i, (s_features, t_features) in enumerate(zip(features_from_student, features_from_teachers)):
                     t_proj_features, t_recons_features, s_proj_features = ckt_modules[i](t_features, s_features)
-                    PFE_loss += self.criterion_L1(s_proj_features, torch.stack(t_proj_features))
+                    t_proj_features = torch.stack(t_proj_features)
+                    feat_dist = self.criterion_L1_none(s_proj_features.unsqueeze(0).expand_as(t_proj_features), t_proj_features)
+                    PFE_loss += (feat_dist * weight_t.expand_as(feat_dist)).mean()
                     PFV_loss += 0.05 * self.criterion_L1(torch.stack(t_recons_features), torch.stack(t_features))
 
                 T_loss = self.criterion_L1(pred, golden_pred)
                 loss = T_loss + PFE_loss + PFV_loss
 
                 self.model.zero_grad()
-                # loss = sum(losses.values())
                 self.ka_loss.append(loss.item())
 
                 loss.backward()
@@ -115,16 +117,25 @@ class KA():
                         100. * batch_idx / len(testloader), T_loss.item(), PFE_loss.item(), PFV_loss.item()))
             
 
-        test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
-        
-        # print global training loss after every 'i' rounds
-        if (iter+1) % print_every == 0:
-            self.ckp.write_log(f' \nAvg Training Stats after {iter+1} KA rounds:')
-            self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.ka_loss))}')
-            self.ckp.write_log("|---- Test Accuracy: {:.2f}%\n".format(100*test_acc))
+            test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
+            
+            # print global training loss after every 'i' rounds
+            if (iter+1) % print_every == 0:
+                self.ckp.write_log(f' \nAvg Training Stats after {iter+1} KA rounds:')
+                self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.ka_loss))}')
+                self.ckp.write_log("|---- Test Accuracy: {:.2f}%\n".format(100*test_acc))
 
-        self.ckp.add_log(test_acc)
-        self.ckp.save(self.model, iter, is_best=(self.ckp.log.index(max(self.ckp.log)) == iter))
+            self.ckp.add_log(test_acc)
+            self.ckp.save(self.model, iter, is_best=(self.ckp.log.index(max(self.ckp.log)) == iter))
+            # self.model.train()
+            # print(self.model.training)
+
+        model_temp = copy.deepcopy(self.model)
+        for idx, w in enumerate(local_weights):
+            model_temp.load_state_dict(w)
+            test_acc, test_loss = test_inference(self.args, model_temp, test_dataset)
+            self.ckp.write_log("|---- Client {} Test Accuracy: {:.2f}%\n".format(idx, 100*test_acc))
+
 
     def train(self):
         if self.args.gpu_id:

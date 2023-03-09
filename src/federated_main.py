@@ -29,6 +29,7 @@ def main():
     exp_details(args)
 
     torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
     checkpoint = utils.checkpoint(args)
 
     if args.trainer == 'fedavg':
