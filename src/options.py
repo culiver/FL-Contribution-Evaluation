@@ -27,6 +27,8 @@ def args_parser():
                         help='learning rate of ka')
     parser.add_argument('--momentum', type=float, default=0.5,
                         help='SGD momentum (default: 0.5)')
+    parser.add_argument('--remove', type=int, default=0,
+                        help='remove by what (default: 0 is random, 1 is remove high, 2 is remove low)')
 
     # model arguments
     parser.add_argument('--model', type=str, default='mlp', help='model name')

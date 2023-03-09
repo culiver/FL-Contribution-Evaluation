@@ -111,6 +111,43 @@ class LocalUpdate(object):
         accuracy = correct/total
         return accuracy, loss
 
+    def computeLocalPrototype(self, model, num_class=10):
+        """ Returns prototype.
+        """
+        new_model = model
+
+        new_model.eval()
+
+        class_features = {}
+        label_nums = {}
+        prototypes = []
+
+        numData = len(self.trainloader.dataset)
+        feat_size = None
+
+        for batch_idx, (images, labels) in enumerate(self.trainloader):
+            images, labels = images.to(self.device), labels.to(self.device)
+
+            # Inference
+            features = new_model(images, is_feat=True, preact=True)[0][-1]
+            features = features.view(features.size(0), -1)
+
+            for i in range(features.shape[0]):
+                label = labels[i].item()
+                feature_vector = features[i].detach().cpu().numpy()
+                feat_size = feature_vector.shape
+                class_features[label] = class_features.get(label, np.zeros(feat_size)) + feature_vector
+                label_nums[label] = label_nums.get(label, 0) + 1
+
+        # Compute the mean feature vector for each class
+        for label in range(num_class):
+            if label in class_features:
+                prototypes.append(class_features[label] / label_nums[label])
+            else:
+                prototypes.append(np.zeros(feat_size)) 
+
+        torch.cuda.empty_cache()
+        return np.array(prototypes)
 
 def test_inference(args, model, test_dataset):
     """ Returns the test accuracy and loss.

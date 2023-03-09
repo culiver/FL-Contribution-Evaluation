@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 import torch
 from tensorboardX import SummaryWriter
+from torch.utils.data import DataLoader, Dataset
 
 from options import args_parser
 from update import LocalUpdate, test_inference
@@ -24,13 +25,54 @@ class FedAvg():
         path_project = os.path.abspath('..')
         self.writer = SummaryWriter('../logs')
 
-    def train(self):
+    def computeServerPrototype(self, num_class=10):
+        """ Returns prototype.
+        """
+        new_model = self.model
+        new_model.eval()
+
+        class_features = {}
+        label_nums = {}
+        prototypes = []
+
+        device = 'cuda' if self.args.gpu else 'cpu'
+        testloader = DataLoader(self.test_dataset, batch_size=128,
+                                shuffle=False)
+
+        numData = torch.tensor(len(testloader.dataset))
+
+        for batch_idx, (images, labels) in enumerate(testloader):
+            images, labels = images.to(device), labels.to(device)
+
+            # Inference
+            features = new_model(images, is_feat=True, preact=True)[0][-1]
+            features = features.view(features.size(0), -1)
+            
+            for i in range(features.shape[0]):
+                label = labels[i].item()
+                feature_vector = features[i].detach().cpu().numpy()
+                feat_size = feature_vector.shape
+                class_features[label] = class_features.get(label, np.zeros(feat_size)) + feature_vector
+                label_nums[label] = label_nums.get(label, 0) + 1
+
+        # Compute the mean feature vector for each class
+        for label in range(num_class):
+            if label in class_features:
+                prototypes.append(class_features[label] / label_nums[label])
+            else:
+                prototypes.append(np.zeros(feat_size))
+
+        torch.cuda.empty_cache()
+
+        return np.array(prototypes)
+
+    def train(self, num_users=2):
         if self.args.gpu_id:
             torch.cuda.set_device(self.args.gpu_id)
         device = 'cuda' if self.args.gpu else 'cpu'
 
         # load dataset and user groups
-        train_dataset, test_dataset, user_groups = get_dataset(self.args)
+        self.train_dataset, self.test_dataset, self.user_groups = get_dataset(self.args)
 
         # Set the model to train and send it to device.
         self.model.to(device)
@@ -64,8 +106,8 @@ class FedAvg():
             idxs_users = np.random.choice(range(self.args.num_users), m, replace=False)
 
             for idx in idxs_users:
-                local_model = LocalUpdate(args=self.args, dataset=train_dataset,
-                                        idxs=user_groups[idx], logger=self.writer)
+                local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
+                                        idxs=self.user_groups[idx], logger=self.writer)
                 w, loss = local_model.update_weights(
                     model=copy.deepcopy(self.model), global_round=epoch)
                 local_weights.append(copy.deepcopy(w))
@@ -84,14 +126,14 @@ class FedAvg():
             list_acc, list_loss = [], []
             self.model.eval()
             for c in range(self.args.num_users):
-                local_model = LocalUpdate(args=self.args, dataset=train_dataset,
-                                        idxs=user_groups[idx], logger=self.writer)
+                local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
+                                        idxs=self.user_groups[idx], logger=self.writer)
                 acc, loss = local_model.inference(model=self.model)
                 list_acc.append(acc)
                 list_loss.append(loss)
             self.train_accuracy.append(sum(list_acc)/len(list_acc))
 
-            test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
+            test_acc, test_loss = test_inference(self.args, self.model, self.test_dataset)
 
             # print global training loss after every 'i' rounds
             if (epoch+1) % print_every == 0:
@@ -104,7 +146,7 @@ class FedAvg():
             self.ckp.save(self.model, epoch, is_best=(self.ckp.log.index(max(self.ckp.log)) == epoch))
 
         # Test inference after completion of training
-        test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
+        test_acc, test_loss = test_inference(self.args, self.model, self.test_dataset)
 
         self.ckp.write_log(f' \n Results after {self.args.epochs} global rounds of training:')
         self.ckp.write_log("|---- Avg Train Accuracy: {:.2f}%".format(100*self.train_accuracy[-1]))
@@ -117,6 +159,16 @@ class FedAvg():
 
         with open(file_name, 'wb') as f:
             pickle.dump([self.train_loss, self.train_accuracy], f)
+
+        if self.args.remove != 0:
+            scores = []
+
+            serverPrototype = self.computeServerPrototype()
+
+            for idx in range(num_users):
+                local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
+                                        idxs=self.user_groups[idx], logger=self.writer)
+                prototypes = local_model.computeLocalPrototype(model=self.model)
 
     def test(self):
         pass
