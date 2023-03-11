@@ -22,6 +22,7 @@ import utils
 from trainer.FedAvg import FedAvg
 from trainer.KA import KA
 import models
+import json
 
 def main():
     start_time = time.time()
@@ -32,14 +33,15 @@ def main():
     np.random.seed(args.seed)
     checkpoint = utils.checkpoint(args)
 
-    if args.trainer == 'fedavg':
-        _model = models.Model(args, checkpoint)
-        t = FedAvg(args, _model, checkpoint)
-        t.train()
-    if args.trainer == 'ka':
-        _model = models.Model(args, checkpoint)
-        t = KA(args, _model, checkpoint)
-        t.train()
+    if not args.plot_only:
+        if args.trainer == 'fedavg':
+            _model = models.Model(args, checkpoint)
+            t = FedAvg(args, _model, checkpoint)
+            t.train()
+        if args.trainer == 'ka':
+            _model = models.Model(args, checkpoint)
+            t = KA(args, _model, checkpoint)
+            t.train()
 
     print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))
 

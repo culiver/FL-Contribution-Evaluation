@@ -29,7 +29,6 @@ class LocalUpdate(object):
         self.logger = logger
         self.trainloader, self.validloader, self.testloader = self.train_val_test(
             dataset, list(idxs))
-        print('Client labels:' + str(np.unique(np.array([d[1] for d in self.trainloader.dataset]))))
         self.device = 'cuda' if args.gpu else 'cpu'
         # Default criterion set to NLL loss function
         self.criterion = nn.NLLLoss().to(self.device)
@@ -53,6 +52,8 @@ class LocalUpdate(object):
         return trainloader, validloader, testloader
 
     def update_weights(self, model, global_round):
+        if self.args.verbose:
+            print('Client labels:' + str(np.unique(np.array([d[1] for d in self.trainloader.dataset]))))
         # Set mode to train model
         model.train()
         epoch_loss = []

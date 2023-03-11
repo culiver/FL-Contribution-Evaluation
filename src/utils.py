@@ -11,6 +11,66 @@ from sampling import mnist_iid, mnist_noniid, mnist_noniid_unequal
 from sampling import cifar_iid, cifar_noniid
 import json
 
+# def plot_acc(args):
+#     file_names = ['../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}]_rmType[{}].json'.\
+#             format(args.dataset, args.model, args.epochs, args.iid,
+#                 args.local_ep, args.local_bs, i) for i in range(2)]
+
+#     data_random, data_high, data_low = [], [], []
+
+#     for i in range(10):
+
+#         file_name = path + 'random_{}.pkl'.format(i)
+#         with open(file_name, 'rb') as f:
+#             train_accuracy = pickle.load(f)
+#             # train_loss, train_accuracy, idxs_exluded_users, runtime, score = pickle.load(f)
+#         data_random.append(train_accuracy)
+
+#         file_name = path + 'low_{}.pkl'.format(i)
+#         with open(file_name, 'rb') as f:
+#             train_accuracy = pickle.load(f)
+#             # train_loss, train_accuracy, idxs_exluded_users, runtime, score = pickle.load(f)
+#         data_low.append(train_accuracy)
+
+
+#         file_name = path + 'high_{}.pkl'.format(i)
+#         with open(file_name, 'rb') as f:
+#             train_accuracy = pickle.load(f)
+#             # train_loss, train_accuracy, idxs_exluded_users, runtime, score = pickle.load(f)
+#         data_high.append(train_accuracy)
+
+
+#     means_random = np.mean(data_random, axis=0)
+#     stds_random = np.std(data_random, axis=0)
+
+#     means_low = np.mean(data_low, axis=0)
+#     stds_low = np.std(data_low, axis=0)
+
+#     means_high = np.mean(data_high, axis=0)
+#     stds_high = np.std(data_high, axis=0)
+
+#     x = list(range(0,10))
+
+#     plt.figure()
+
+#     plt.plot(x,means_random,label='Remove randomly', color = 'r')
+#     plt.plot(x,means_high,label='Remove High', color = 'g')
+#     plt.plot(x,means_low,label='Remove Low', color = 'b')
+
+#     plt.fill_between(x=x, y1=means_random-stds_random, y2=means_random+stds_random, alpha=0.2, color="lightcoral")
+#     plt.fill_between(x=x, y1=means_high-stds_high, y2=means_high+stds_high, alpha=0.2, color="lightgreen")
+#     plt.fill_between(x=x, y1=means_low-stds_low, y2=means_low+stds_low, alpha=0.2, color="lightblue")
+
+#     plt.title('Comparison of Remove High, Remove Low and Remove Randomly')
+#     plt.ylabel('Average Accuracy')
+#     plt.xlabel('Number of Excluded users')
+
+#     plt.legend()
+
+#     plt.show()
+
+#     plt.savefig(path+'.png')
+
 
 def get_dataset(args):
     """ Returns train and test datasets and a user group which is a dict where

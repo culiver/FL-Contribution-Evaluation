@@ -15,7 +15,7 @@ def args_parser():
                         help="number of rounds of training")
     parser.add_argument('--num_users', type=int, default=100,
                         help="number of users: K")
-    parser.add_argument('--frac', type=float, default=0.1,
+    parser.add_argument('--frac', type=float, default=1,
                         help='the fraction of clients: C')
     parser.add_argument('--local_ep', type=int, default=10,
                         help="the number of local epochs: E")
@@ -27,7 +27,9 @@ def args_parser():
                         help='learning rate of ka')
     parser.add_argument('--momentum', type=float, default=0.5,
                         help='SGD momentum (default: 0.5)')
-    parser.add_argument('--remove', type=int, default=0,
+    parser.add_argument('--rm_type', type=int, default=0,
+                        help='remove by what (default: 0 is random, 1 is remove high, 2 is remove low)')
+    parser.add_argument('--rm_step', type=int, default=5,
                         help='remove by what (default: 0 is random, 1 is remove high, 2 is remove low)')
 
     # model arguments
@@ -90,7 +92,9 @@ def args_parser():
                         help='save output results')
     parser.add_argument('--save_gt', action='store_true',
                         help='save low-resolution and high-resolution images together')
-
+    parser.add_argument('--plot_only', action='store_true',
+                        help='only use log to plot')
+                        
     # Knowledge amalgamation
     parser.add_argument('--ka_bs', type=int, default=10,
                         help="number of rounds of training")
