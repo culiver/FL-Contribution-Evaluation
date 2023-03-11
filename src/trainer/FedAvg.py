@@ -133,14 +133,14 @@ class FedAvg():
             self.converged_accuracy[-1].append(test_acc)
             self.ckp.write_log("|---- Test Accuracy: {:.2f}%".format(100*test_acc))
 
-    def train(self, iter_num=1):
+    def train(self):
         if self.args.gpu_id:
             torch.cuda.set_device(self.args.gpu_id)
         device = 'cuda' if self.args.gpu else 'cpu'
         self.converged_accuracy = []
         self.ckp.write_log(str(self.model))
 
-        for iter in range(iter_num):
+        for iter in range(self.args.iter_num):
             print('='*20)
             print('Start training!')
             print('='*20)

@@ -11,6 +11,8 @@ def args_parser():
     parser.add_argument('--trainer', type=str, default='fedavg', help='trainer name')
 
     # federated arguments (Notation for the arguments followed from paper)
+    parser.add_argument('--iter_num', type=int, default=10,
+                        help="number of data distributions")
     parser.add_argument('--epochs', type=int, default=10,
                         help="number of rounds of training")
     parser.add_argument('--num_users', type=int, default=100,
@@ -94,7 +96,7 @@ def args_parser():
                         help='save low-resolution and high-resolution images together')
     parser.add_argument('--plot_only', action='store_true',
                         help='only use log to plot')
-                        
+
     # Knowledge amalgamation
     parser.add_argument('--ka_bs', type=int, default=10,
                         help="number of rounds of training")
