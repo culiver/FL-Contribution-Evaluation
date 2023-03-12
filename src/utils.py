@@ -10,66 +10,38 @@ from torchvision import datasets, transforms
 from sampling import mnist_iid, mnist_noniid, mnist_noniid_unequal
 from sampling import cifar_iid, cifar_noniid
 import json
+import matplotlib.pyplot as plt
+import numpy as np
 
-# def plot_acc(args):
-#     file_names = ['../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}]_rmType[{}].json'.\
-#             format(args.dataset, args.model, args.epochs, args.iid,
-#                 args.local_ep, args.local_bs, i) for i in range(2)]
+def plot_acc(args, acc_curves=[0, 1, 2]):
+    curve_color = ['r', 'g', 'b']
+    rm_info = {0:{'color_mean':'r', 'color_std':'lightcoral', 'label':'rmRandom'}, 1:{'color_mean':'g', 'color_std':'lightgreen', 'label':'rmHigh'}, 2:{'color_mean':'b', 'color_std':'lightblue', 'label':'rmLow'}}
 
-#     data_random, data_high, data_low = [], [], []
+    plt.figure()
+    x = list(range(0, args.num_users, args.rm_step))
 
-#     for i in range(10):
+    for i in acc_curves:
+        log_file = '../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}]_rmType[{}].json'.\
+            format(args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs, i)
 
-#         file_name = path + 'random_{}.pkl'.format(i)
-#         with open(file_name, 'rb') as f:
-#             train_accuracy = pickle.load(f)
-#             # train_loss, train_accuracy, idxs_exluded_users, runtime, score = pickle.load(f)
-#         data_random.append(train_accuracy)
+        with open(log_file) as f:
+            acc_list = np.array(json.load(f))
+        means = np.mean(acc_list, axis=0)
+        stds = np.std(acc_list, axis=0)
 
-#         file_name = path + 'low_{}.pkl'.format(i)
-#         with open(file_name, 'rb') as f:
-#             train_accuracy = pickle.load(f)
-#             # train_loss, train_accuracy, idxs_exluded_users, runtime, score = pickle.load(f)
-#         data_low.append(train_accuracy)
+        plt.plot(x, means, label=rm_info[i]['label'], color=rm_info[i]['color_mean'])
+        plt.fill_between(x=x, y1=means-stds, y2=means+stds, alpha=0.2, color=rm_info[i]['color_std'])
 
+    plt.title('Comparison of Remove High, Remove Low and Remove Randomly')
+    plt.ylabel('Average Accuracy')
+    plt.xlabel('Number of Excluded users')
 
-#         file_name = path + 'high_{}.pkl'.format(i)
-#         with open(file_name, 'rb') as f:
-#             train_accuracy = pickle.load(f)
-#             # train_loss, train_accuracy, idxs_exluded_users, runtime, score = pickle.load(f)
-#         data_high.append(train_accuracy)
+    plt.legend()
 
-
-#     means_random = np.mean(data_random, axis=0)
-#     stds_random = np.std(data_random, axis=0)
-
-#     means_low = np.mean(data_low, axis=0)
-#     stds_low = np.std(data_low, axis=0)
-
-#     means_high = np.mean(data_high, axis=0)
-#     stds_high = np.std(data_high, axis=0)
-
-#     x = list(range(0,10))
-
-#     plt.figure()
-
-#     plt.plot(x,means_random,label='Remove randomly', color = 'r')
-#     plt.plot(x,means_high,label='Remove High', color = 'g')
-#     plt.plot(x,means_low,label='Remove Low', color = 'b')
-
-#     plt.fill_between(x=x, y1=means_random-stds_random, y2=means_random+stds_random, alpha=0.2, color="lightcoral")
-#     plt.fill_between(x=x, y1=means_high-stds_high, y2=means_high+stds_high, alpha=0.2, color="lightgreen")
-#     plt.fill_between(x=x, y1=means_low-stds_low, y2=means_low+stds_low, alpha=0.2, color="lightblue")
-
-#     plt.title('Comparison of Remove High, Remove Low and Remove Randomly')
-#     plt.ylabel('Average Accuracy')
-#     plt.xlabel('Number of Excluded users')
-
-#     plt.legend()
-
-#     plt.show()
-
-#     plt.savefig(path+'.png')
+    plt.show()
+    img_name = '../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}].png'.\
+            format(args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs)
+    plt.savefig(img_name)
 
 
 def get_dataset(args):

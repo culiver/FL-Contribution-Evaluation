@@ -16,7 +16,7 @@ from tensorboardX import SummaryWriter
 from options import args_parser
 from update import LocalUpdate, test_inference
 # from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
-from utils import get_dataset, average_weights, exp_details
+from utils import get_dataset, average_weights, exp_details, plot_acc
 import utils
 
 from trainer.FedAvg import FedAvg
@@ -34,14 +34,17 @@ def main():
     checkpoint = utils.checkpoint(args)
 
     if not args.plot_only:
-        if args.trainer == 'fedavg':
-            _model = models.Model(args, checkpoint)
-            t = FedAvg(args, _model, checkpoint)
-            t.train()
-        if args.trainer == 'ka':
-            _model = models.Model(args, checkpoint)
-            t = KA(args, _model, checkpoint)
-            t.train()
+        pass
+        # if args.trainer == 'fedavg':
+        #     _model = models.Model(args, checkpoint)
+        #     t = FedAvg(args, _model, checkpoint)
+        #     t.train()
+        # if args.trainer == 'ka':
+        #     _model = models.Model(args, checkpoint)
+        #     t = KA(args, _model, checkpoint)
+        #     t.train()
+
+    plot_acc(args)
 
     print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))
 
