@@ -73,12 +73,13 @@ class FedAvg():
         if metric == 'cosine':
             serverPrototype = serverPrototype / np.linalg.norm(serverPrototype, axis=1, keepdims=True)
             for clientPrototype in clientPrototypes:
+                # Norm the prototype to Vector
                 exist_indexes = np.linalg.norm(clientPrototype, axis=1) > 0
                 clientPrototype[exist_indexes] = clientPrototype[exist_indexes] / np.linalg.norm(clientPrototype[exist_indexes], axis=1, keepdims=True)
                 distMatrix = serverPrototype @ clientPrototype.T
-                nearHit  = np.diagonal(distMatrix).mean()
-                np.fill_diagonal(distMatrix, 0)
-                nearMiss = distMatrix.max(axis=1)
+                nearHit  = np.diagonal(distMatrix).copy()
+                np.fill_diagonal(distMatrix, -1)
+                nearMiss = distMatrix.max(axis=0)
                 score = (nearHit - nearMiss).mean()
                 scores.append(score)
         return np.array(scores)
@@ -182,6 +183,7 @@ class FedAvg():
                 for idx in idxs_users:
                     local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
                                             idxs=self.user_groups[idx], logger=self.writer)
+                    print("Data of client {}: {}".format(idx, np.unique(np.array([d[1] for d in local_model.trainloader.dataset]))))
                     w, loss = local_model.update_weights(
                         model=copy.deepcopy(self.model), global_round=epoch)
                     local_weights.append(copy.deepcopy(w))
@@ -196,16 +198,16 @@ class FedAvg():
                 loss_avg = sum(local_losses) / len(local_losses)
                 self.train_loss.append(loss_avg)
 
-                # Calculate avg training accuracy over all users at every epoch
-                list_acc, list_loss = [], []
-                self.model.eval()
-                for idx in range(self.args.num_users):
-                    local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
-                                            idxs=self.user_groups[idx], logger=self.writer)
-                    acc, loss = local_model.inference(model=self.model)
-                    list_acc.append(acc)
-                    list_loss.append(loss)
-                self.train_accuracy.append(sum(list_acc)/len(list_acc))
+                # # Calculate avg training accuracy over all users at every epoch
+                # list_acc, list_loss = [], []
+                # self.model.eval()
+                # for idx in range(self.args.num_users):
+                #     local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
+                #                             idxs=self.user_groups[idx], logger=self.writer)
+                #     acc, loss = local_model.inference(model=self.model)
+                #     list_acc.append(acc)
+                #     list_loss.append(loss)
+                # self.train_accuracy.append(sum(list_acc)/len(list_acc))
 
                 test_acc, test_loss = test_inference(self.args, self.model, self.test_dataset)
 
@@ -213,7 +215,7 @@ class FedAvg():
                 if (epoch+1) % print_every == 0:
                     self.ckp.write_log(f' \nAvg Training Stats after {epoch+1} global rounds:')
                     self.ckp.write_log(f'Training Loss : {np.mean(np.array(self.train_loss))}')
-                    self.ckp.write_log('Train Accuracy: {:.2f}%'.format(100*self.train_accuracy[-1]))
+                    # self.ckp.write_log('Train Accuracy: {:.2f}%'.format(100*self.train_accuracy[-1]))
                     self.ckp.write_log("|---- Test Accuracy: {:.2f} \n%".format(100*test_acc))
 
                 self.ckp.add_log(test_acc)
@@ -225,7 +227,7 @@ class FedAvg():
             self.converged_accuracy[-1].append(test_acc)
 
             self.ckp.write_log(f' \n Results after {self.args.epochs} global rounds of training:')
-            self.ckp.write_log("|---- Avg Train Accuracy: {:.2f}%".format(100*self.train_accuracy[-1]))
+            # self.ckp.write_log("|---- Avg Train Accuracy: {:.2f}%".format(100*self.train_accuracy[-1]))
             self.ckp.write_log("|---- Test Accuracy: {:.2f}%".format(100*test_acc))
 
             # Saving the objects train_loss and train_accuracy:
@@ -233,8 +235,8 @@ class FedAvg():
                 format(self.args.dataset, self.args.model, self.args.epochs, self.args.frac, self.args.iid,
                     self.args.local_ep, self.args.local_bs)
 
-            with open(file_name, 'wb') as f:
-                pickle.dump([self.train_loss, self.train_accuracy], f)
+            # with open(file_name, 'wb') as f:
+                # pickle.dump([self.train_loss, self.train_accuracy], f)
         
 
             if self.args.rm_type != 0:
@@ -250,6 +252,7 @@ class FedAvg():
                 self.contributions = self.contribution_eval(serverPrototype, clientPrototypes)
             else:
                 self.contributions = np.zeros(self.args.num_users)
+
 
             if self.args.rm_type == 1:
                 self.train_remove_clients(exclude_nums=[i for i in range(self.args.rm_step,self.args.num_users,self.args.rm_step)], scores=self.contributions, rm_high=True)

@@ -24,6 +24,9 @@ def plot_acc(args, acc_curves=[0, 1, 2]):
         log_file = '../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}]_rmType[{}].json'.\
             format(args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs, i)
 
+        if not os.path.isfile(log_file):
+            continue
+
         with open(log_file) as f:
             acc_list = np.array(json.load(f))
         means = np.mean(acc_list, axis=0)
@@ -38,7 +41,6 @@ def plot_acc(args, acc_curves=[0, 1, 2]):
 
     plt.legend()
 
-    plt.show()
     img_name = '../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}].png'.\
             format(args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs)
     plt.savefig(img_name)

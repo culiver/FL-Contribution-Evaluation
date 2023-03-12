@@ -52,8 +52,8 @@ class LocalUpdate(object):
         return trainloader, validloader, testloader
 
     def update_weights(self, model, global_round):
-        if self.args.verbose:
-            print('Client labels:' + str(np.unique(np.array([d[1] for d in self.trainloader.dataset]))))
+        # if self.args.verbose:
+        # print('Client labels:' + str(np.unique(np.array([d[1] for d in self.trainloader.dataset]))))
         # Set mode to train model
         model.train()
         epoch_loss = []

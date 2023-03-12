@@ -33,16 +33,17 @@ def main():
     np.random.seed(args.seed)
     checkpoint = utils.checkpoint(args)
 
+    os.makedirs('../save/objects', exist_ok=True)
+
     if not args.plot_only:
-        pass
-        # if args.trainer == 'fedavg':
-        #     _model = models.Model(args, checkpoint)
-        #     t = FedAvg(args, _model, checkpoint)
-        #     t.train()
-        # if args.trainer == 'ka':
-        #     _model = models.Model(args, checkpoint)
-        #     t = KA(args, _model, checkpoint)
-        #     t.train()
+        if args.trainer == 'fedavg':
+            _model = models.Model(args, checkpoint)
+            t = FedAvg(args, _model, checkpoint)
+            t.train()
+        if args.trainer == 'ka':
+            _model = models.Model(args, checkpoint)
+            t = KA(args, _model, checkpoint)
+            t.train()
 
     plot_acc(args)
 
