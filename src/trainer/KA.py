@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 from options import args_parser
 from update import LocalUpdate, test_inference
 # from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
-from utils import get_dataset, average_weights, exp_details
+from utils import get_dataset, average_weights, exp_details, save_acc
 from torch.utils.data import DataLoader, Dataset
 
 import matplotlib
@@ -20,16 +20,20 @@ import matplotlib.pyplot as plt
 
 from kd import hcl, Bridge
 from ckt import CKTModule
+import json
+from utils import contribution_eval
+from .central import Central
 
-class KA():
+class KA(Central):
     def __init__(self, args, my_model, ckp):
         self.args = args
-        self.model = my_model
+        self.model = copy.deepcopy(my_model)
+        self.init_model = copy.deepcopy(my_model)
         self.ckp = ckp
         path_project = os.path.abspath('..')
         self.writer = SummaryWriter('../logs')
         self.device = 'cuda' if args.gpu else 'cpu'
-
+    
     def amalgamate(self, test_dataset, local_weights):
         m = max(int(self.args.frac * self.args.num_users), 1)
         self.ka_loss = []
@@ -46,7 +50,7 @@ class KA():
         # for c in [6, 16]: # cifar
             ckt_modules.append(CKTModule(channel_t=c, channel_s=c, channel_h=c//2, n_teachers=len(local_weights)).to(self.device))
         # Dataset
-        testloader = DataLoader(test_dataset, batch_size=self.args.ka_bs, shuffle=False)
+        testloader = DataLoader(self.test_dataset, batch_size=self.args.ka_bs, shuffle=False)
 
         # Set optimizer for the local updates
         if self.args.optimizer_ka == 'sgd':
@@ -117,7 +121,7 @@ class KA():
                         100. * batch_idx / len(testloader), T_loss.item(), PFE_loss.item(), PFV_loss.item()))
             
 
-            test_acc, test_loss = test_inference(self.args, self.model, test_dataset)
+            test_acc, test_loss = test_inference(self.args, self.model, self.test_dataset)
             
             # print global training loss after every 'i' rounds
             if (iter+1) % print_every == 0:
@@ -127,65 +131,69 @@ class KA():
 
             self.ckp.add_log(test_acc)
             self.ckp.save(self.model, iter, is_best=(self.ckp.log.index(max(self.ckp.log)) == iter))
-            # self.model.train()
-            # print(self.model.training)
 
-        model_temp = copy.deepcopy(self.model)
-        for idx, w in enumerate(local_weights):
-            model_temp.load_state_dict(w)
-            test_acc, test_loss = test_inference(self.args, model_temp, test_dataset)
-            self.ckp.write_log("|---- Client {} Test Accuracy: {:.2f}%\n".format(idx, 100*test_acc))
-
+        # model_temp = copy.deepcopy(self.model)
+        # for idx, w in enumerate(local_weights):
+        #     model_temp.load_state_dict(w)
+        #     test_acc, test_loss = test_inference(self.args, model_temp, self.test_dataset)
+        #     self.ckp.write_log("|---- Client {} Test Accuracy: {:.2f}%\n".format(idx, 100*test_acc))
 
     def train(self):
         if self.args.gpu_id:
             torch.cuda.set_device(self.args.gpu_id)
         device = 'cuda' if self.args.gpu else 'cpu'
+        self.converged_accuracy = []
 
-        # load dataset and user groups
-        train_dataset, test_dataset, user_groups = get_dataset(self.args)
+        for iter in range(self.args.iter_num):
+            print('='*20)
+            print('Iter {} Start!'.format(iter))
+            print('='*20)
+            self.converged_accuracy.append([])
+            # load dataset and user groups
+            self.train_dataset, self.test_dataset, self.user_groups = get_dataset(self.args)
+            self.num_class = len(set([d[1] for d in self.test_dataset]))
 
-        # Set the model to train and send it to device.
-        self.model.to(device)
-        self.model.train()
-        self.model.load(
-            self.ckp.get_path('model'),
-            pre_train=self.args.pre_train,
-            resume=self.args.resume,
-            cpu=self.args.cpu
-        )
-        self.ckp.write_log(str(self.model))
+            # Set the model to train and send it to device.
+            self.model.to(device)
+            self.model.train()
+            self.model.load(
+                self.ckp.get_path('model'),
+                pre_train=self.args.pre_train,
+                resume=self.args.resume,
+                cpu=self.args.cpu
+            )
+            self.ckp.write_log(str(self.model))
 
-        # copy weights
-        global_weights = self.model.state_dict()
+            # copy weights
+            global_weights = self.model.state_dict()
 
-        # Training
-        self.train_loss, self.train_accuracy = [], []
-        val_acc_list, net_list = [], []
-        cv_loss, cv_acc = [], []
-        print_every = 2
-        val_loss_pre, counter = 0, 0
-
-
-        # Start Local ERM
-        local_weights, local_losses = [], []
-
-        self.model.train()
-        m = max(int(self.args.frac * self.args.num_users), 1)
-        idxs_users = np.random.choice(range(self.args.num_users), m, replace=False)
-
-        for idx in idxs_users:
-            local_model = LocalUpdate(args=self.args, dataset=train_dataset,
-                                    idxs=user_groups[idx], logger=self.writer)
-            w, loss = local_model.update_weights(
-                model=copy.deepcopy(self.model), global_round=0)
-            local_weights.append(copy.deepcopy(w))
-            local_losses.append(copy.deepcopy(loss))
-
-        # Knowledge Amalgamation
-        self.amalgamate(test_dataset, local_weights)
+            # Training
+            self.train_loss, self.train_accuracy = [], []
+            val_acc_list, net_list = [], []
+            cv_loss, cv_acc = [], []
+            print_every = 2
+            val_loss_pre, counter = 0, 0
 
 
+            # Start Local ERM
+            local_weights, local_losses = [], []
+
+            self.model.train()
+            m = max(int(self.args.frac * self.args.num_users), 1)
+            idxs_users = np.random.choice(range(self.args.num_users), m, replace=False)
+
+            for idx in idxs_users:
+                local_model = LocalUpdate(args=self.args, dataset=self.train_dataset,
+                                        idxs=self.user_groups[idx], logger=self.writer)
+                print("Data of client {}: {}".format(idx, np.unique(np.array([d[1] for d in local_model.trainloader.dataset]))))
+                w, loss = local_model.update_weights(
+                    model=copy.deepcopy(self.model), global_round=0)
+                local_weights.append(copy.deepcopy(w))
+                local_losses.append(copy.deepcopy(loss))
+
+            # Knowledge Amalgamation
+            self.amalgamate(self.test_dataset, local_weights)
+            self.get_contributions()
 
     def test(self):
         pass

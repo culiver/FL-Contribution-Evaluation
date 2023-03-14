@@ -12,6 +12,22 @@ from sampling import cifar_iid, cifar_noniid
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import List, NamedTuple, Optional, Sequence, Tuple
+from pydvl.value import compute_least_core_values, LeastCoreMode
+from pydvl.utils import (
+    Dataset,
+)
+
+def save_acc(args, converged_accuracy):
+    # Saving the accuracy of converged federated learning training:
+    file_name = '../save/{}_{}_{}_{}_iid[{}]_E[{}]_B[{}]_iterNum[{}]/acc_rmType[{}].json'.\
+        format(args.trainer, args.dataset, args.model, args.epochs, args.iid,
+            args.local_ep, args.local_bs, args.iter_num, args.rm_type)
+    os.makedirs(os.path.dirname(file_name), exist_ok=True)
+    print(converged_accuracy)
+    with open(file_name, 'w') as f:
+        json.dump(converged_accuracy, f)
+
 
 def plot_acc(args, acc_curves=[0, 1, 2]):
     curve_color = ['r', 'g', 'b']
@@ -21,8 +37,8 @@ def plot_acc(args, acc_curves=[0, 1, 2]):
     x = list(range(0, args.num_users, args.rm_step))
 
     for i in acc_curves:
-        log_file = '../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}]_rmType[{}].json'.\
-            format(args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs, i)
+        log_file = '../save/{}_{}_{}_{}_iid[{}]_E[{}]_B[{}]_iterNum[{}]/acc_rmType[{}].json'.\
+            format(args.trainer, args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs, args.iter_num, i)
 
         if not os.path.isfile(log_file):
             continue
@@ -33,7 +49,7 @@ def plot_acc(args, acc_curves=[0, 1, 2]):
         stds = np.std(acc_list, axis=0)
 
         plt.plot(x, means, label=rm_info[i]['label'], color=rm_info[i]['color_mean'])
-        plt.fill_between(x=x, y1=means-stds, y2=means+stds, alpha=0.2, color=rm_info[i]['color_std'])
+        plt.fill_between(x=x, y1=means-stds, y2=means+stds, alpha=0.3, color=rm_info[i]['color_std'])
 
     plt.title('Comparison of Remove High, Remove Low and Remove Randomly')
     plt.ylabel('Average Accuracy')
@@ -41,8 +57,7 @@ def plot_acc(args, acc_curves=[0, 1, 2]):
 
     plt.legend()
 
-    img_name = '../save/objects/Acc_{}_{}_{}_iid[{}]_E[{}]_B[{}].png'.\
-            format(args.dataset, args.model, args.epochs, args.iid, args.local_ep, args.local_bs)
+    img_name = os.path.join(os.path.dirname(log_file), 'acc_curve.png')
     plt.savefig(img_name)
 
 
@@ -196,3 +211,85 @@ class checkpoint():
 
     def done(self):
         self.log_file.close()
+
+class Prototype_set():
+    def __init__(self, clientPrototypes):
+        self.prototypes = clientPrototypes
+        self.indices = np.arange(len(self.prototypes))
+        self.data_names = self.indices
+    def __len__(self):    
+        return len(self.prototypes)
+
+class Utility_Func:
+    def __init__(
+        self,
+        serverPrototype,
+        clientPrototypes,
+        client_data_nums,
+    ):
+        self.serverPrototype = serverPrototype
+        self.data = Prototype_set(clientPrototypes)
+        self.client_data_nums = client_data_nums
+        
+    def __call__(self, indices):
+        utility: float = self._utility(indices)
+        return utility
+
+    def scorer(self, indices, metric='cosine'):
+        if metric == 'cosine':
+            # Merge selected clients
+            weights = self.client_data_nums[np.array(indices)] / self.client_data_nums[np.array(indices)].sum()
+            clientPrototype = (self.data.prototypes[indices, :] * weights[:, np.newaxis, np.newaxis]).sum(axis=0)
+            # Normalization
+            serverPrototype = self.serverPrototype / np.linalg.norm(self.serverPrototype, axis=1, keepdims=True)
+            exist_indexes = np.linalg.norm(clientPrototype, axis=1) > 0
+            clientPrototype[exist_indexes] = clientPrototype[exist_indexes] / np.linalg.norm(clientPrototype[exist_indexes], axis=1, keepdims=True)
+
+            # Calculate score
+            distMatrix = serverPrototype @ clientPrototype.T
+            nearHit  = np.diagonal(distMatrix).copy()
+            np.fill_diagonal(distMatrix, -1)
+            nearMiss = distMatrix.max(axis=0)
+            score = (nearHit - nearMiss).mean() / 4 + 0.5
+            return score
+
+    def _utility(self, indices) -> float:
+        if len(indices) == 0:
+            return 0.0
+            
+        return self.scorer(indices)
+
+
+def contribution_eval(serverPrototype, clientPrototypes, client_data_nums, metric='cosine', budget=200, exact=True):
+    if metric == 'cosine':
+        # serverPrototype = serverPrototype / np.linalg.norm(serverPrototype, axis=1, keepdims=True)
+        # for clientPrototype in clientPrototypes:
+        #     # Norm the prototype to Vector
+        #     exist_indexes = np.linalg.norm(clientPrototype, axis=1) > 0
+        #     clientPrototype[exist_indexes] = clientPrototype[exist_indexes] / np.linalg.norm(clientPrototype[exist_indexes], axis=1, keepdims=True)
+        #     distMatrix = serverPrototype @ clientPrototype.T
+        #     nearHit  = np.diagonal(distMatrix).copy()
+        #     np.fill_diagonal(distMatrix, -1)
+        #     nearMiss = distMatrix.max(axis=0)
+        #     score = (nearHit - nearMiss).mean()
+        #     scores.append(score)
+        # clientPrototypes = Dataset.from_arrays(
+        #     clientPrototypes,
+        #     np.zeros(clientPrototypes.shape[0]),
+        #     train_size=0,
+        # )
+        utility = Utility_Func(serverPrototype, clientPrototypes, client_data_nums)
+        if exact:
+            values = compute_least_core_values(
+                u=utility,
+                mode=LeastCoreMode.Exact,
+                progress=True,
+            )
+        else:
+            values = compute_least_core_values(
+                u=utility,
+                mode=LeastCoreMode.MonteCarlo,
+                n_iterations=budget,
+                n_jobs=1,
+            )
+    return values.values

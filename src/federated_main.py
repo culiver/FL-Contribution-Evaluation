@@ -16,7 +16,7 @@ from tensorboardX import SummaryWriter
 from options import args_parser
 from update import LocalUpdate, test_inference
 # from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
-from utils import get_dataset, average_weights, exp_details, plot_acc
+from utils import get_dataset, average_weights, exp_details, plot_acc, save_acc
 import utils
 
 from trainer.FedAvg import FedAvg
@@ -44,6 +44,21 @@ def main():
             _model = models.Model(args, checkpoint)
             t = KA(args, _model, checkpoint)
             t.train()
+            
+        if args.rm_type == -1:
+            pass
+        else:
+            if args.trainer == 'fedavg':
+                exclude_num = [i for i in range(args.rm_step,args.num_users,args.rm_step)]
+            elif args.trainer == 'ka':
+                exclude_num = [i for i in range(0,args.num_users,args.rm_step)]
+
+            if args.rm_type == 1:
+                t.train_remove_clients(exclude_nums=exclude_num, scores=t.contributions, rm_high=True)
+            else:
+                t.train_remove_clients(exclude_nums=exclude_num, scores=t.contributions, rm_high=False)
+
+        save_acc(t.args, t.converged_accuracy)
 
     plot_acc(args)
 
